@@ -1,4 +1,4 @@
-// SafeRoute Dhaka — Weather Status Endpoint
+// Safe Dhaka — Weather Status Endpoint
 import { NextResponse } from 'next/server'
 import { getDhakaWeather } from '@/lib/weather'
 

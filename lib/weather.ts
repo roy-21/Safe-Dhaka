@@ -16,9 +16,10 @@ export async function getDhakaWeather(): Promise<WeatherData> {
       description: res.data.weather[0].description,
       temperature: Math.round(res.data.main.temp),
       humidity: res.data.main.humidity,
+      // Real Dhaka thresholds: 20mm/hr = local flooding, 40mm/hr = city-wide
       floodRisk: !isRaining ? 'none'
-        : rainfall < 5 ? 'low'
-        : rainfall < 15 ? 'high'
+        : rainfall < 10 ? 'low'
+        : rainfall < 20 ? 'high'
         : 'extreme'
     }
   } catch {

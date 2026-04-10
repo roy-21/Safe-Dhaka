@@ -1,4 +1,4 @@
-// SafeRoute Dhaka — Main AI Chat Endpoint
+// Safe Dhaka — Main AI Chat Endpoint
 import { NextRequest, NextResponse } from 'next/server'
 import axios from 'axios'
 import { getDhakaWeather } from '@/lib/weather'
@@ -30,6 +30,13 @@ export async function POST(req: NextRequest) {
   try {
     const { message, conversationHistory = [], isEmergency = false } = await req.json()
 
+    // Input validation — never call Gemini with empty message
+    if (!message || !message.trim()) {
+      return NextResponse.json({
+        reply: 'Please tell me where you want to go. For example: "Mirpur 10 to Motijheel" or "Is my child\'s school route safe today?"'
+      })
+    }
+
     // Collect all live data in parallel — never sequentially
     const [weather, alerts, communityReports] = await Promise.all([
       getDhakaWeather(),
@@ -42,8 +49,8 @@ export async function POST(req: NextRequest) {
       isRaining: weather.isRaining,
       rainDescription: weather.description,
       temperature: weather.temperature,
-      currentTime: now.toLocaleTimeString('en-BD', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit' }),
-      currentDay: now.toLocaleDateString('en-BD', { timeZone: 'Asia/Dhaka', weekday: 'long' }),
+      currentTime: now.toLocaleTimeString('en-US', { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', hour12: true }),
+      currentDay: now.toLocaleDateString('en-US', { timeZone: 'Asia/Dhaka', weekday: 'long' }),
       isRushHour: isRushHour(),
       isFriday: now.getDay() === 5,
       activeAlerts: alerts,
@@ -83,14 +90,24 @@ export async function POST(req: NextRequest) {
               contents: messages,
               generationConfig: {
                 temperature: 0.4,
-                maxOutputTokens: 500,
+                maxOutputTokens: 800,   // Expert structured responses need more tokens
                 topP: 0.8
               }
             },
             { timeout: 15000 } // 15 second timeout
           )
 
-          const reply = geminiRes.data.candidates[0].content.parts[0].text
+          // Null-safe: Gemini may return no candidates if content is blocked
+          const candidates = geminiRes.data.candidates
+          if (!candidates || candidates.length === 0) {
+            console.warn(`Gemini ${model} returned no candidates (content blocked)`)
+            break
+          }
+          const reply = candidates[0]?.content?.parts?.[0]?.text
+          if (!reply) {
+            console.warn(`Gemini ${model} returned empty reply`)
+            break
+          }
 
           return NextResponse.json({
             reply,

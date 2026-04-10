@@ -1,4 +1,4 @@
-// SafeRoute Dhaka — Community Report Endpoint
+// Safe Dhaka — Community Report Endpoint
 import { NextRequest, NextResponse } from 'next/server'
 import { submitReport } from '@/lib/community'
 
@@ -6,9 +6,10 @@ export async function POST(req: NextRequest) {
   try {
     const { report_type, location, description } = await req.json()
 
-    if (!report_type || !location) {
+    const VALID_TYPES = ['jam', 'flood', 'vip', 'accident', 'safe']
+    if (!report_type || !location || !VALID_TYPES.includes(report_type)) {
       return NextResponse.json(
-        { error: 'report_type and location are required' },
+        { error: 'Valid report_type (jam|flood|vip|accident|safe) and location are required' },
         { status: 400 }
       )
     }
