@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Send, Loader2, School, Wallet, AlertTriangle } from 'lucide-react'
+import { Send, Loader2, School, Wallet, AlertTriangle, Cpu, Zap, Database } from 'lucide-react'
 import { ChatMessage } from '@/types'
+import { VoiceInput } from './VoiceInput'
+import { DepartureTimer } from './DepartureTimer'
 
 const INITIAL_MESSAGE: ChatMessage = {
   id: 'welcome',
@@ -18,74 +20,51 @@ Or ask me about your child's school route.
 }
 
 const QUICK_ACTIONS = [
-  {
-    icon: School,
-    text: "My child's school route — is it safe today?",
-    color: 'quick-school'
-  },
-  {
-    icon: Wallet,
-    text: "Mirpur to Motijheel — only 50 taka",
-    color: 'quick-budget'
-  },
-  {
-    icon: AlertTriangle,
-    text: "My child already left — is route safe now?",
-    color: 'quick-emergency'
-  },
-  {
-    icon: School,
-    text: "মিরপুর থেকে মতিঝিল কীভাবে যাবো?",
-    color: 'quick-bangla'
-  },
-  {
-    icon: Wallet,
-    text: "আমার বাজেট ৫০ টাকা — কোন পথে যাবো?",
-    color: 'quick-bangla'
-  }
+  { icon: School,        text: "My child's school route — is it safe today?",  color: 'quick-school'    },
+  { icon: Wallet,        text: "Mirpur to Motijheel — only 50 taka",            color: 'quick-budget'    },
+  { icon: AlertTriangle, text: "My child already left — is route safe now?",    color: 'quick-emergency' },
+  { icon: School,        text: "মিরপুর থেকে মতিঝিল কীভাবে যাবো?",              color: 'quick-bangla'    },
+  { icon: Wallet,        text: "আমার বাজেট ৫০ টাকা — কোন পথে যাবো?",           color: 'quick-bangla'    }
 ]
+
+// AI source badge labels + icons
+const AI_SOURCE = {
+  groq:   { label: 'Llama 3.3',  icon: Zap,      cls: 'badge-groq'   },
+  gemini: { label: 'Gemini',     icon: Cpu,      cls: 'badge-gemini' },
+  local:  { label: 'Local AI',   icon: Database, cls: 'badge-local'  }
+}
 
 // Smart line classifier for the clean human-friendly format
 function classifyLine(line: string): string {
   if (!line.trim()) return 'spacer'
-  // Summary header lines: "Budget route found:", "Fastest route:", "School route check:"
   if (/^(Budget route|Fastest route|Best route|School route|Emergency|MRT|Metro|মেট্রো রেল|স্কুল রুট|বন্যা|সবচেয়ে দ্রুত|এখনকার সেরা|বাজেট রুট)/i.test(line.trim())) return 'header'
-  // Section labels: "Best option right now:", "Best route this morning:"
   if (/right now:|this morning:|এখনকার সেরা পথ:|সেরা পথ:/i.test(line)) return 'section'
-  // Safety score lines
   if (/safety score:|নিরাপত্তা স্কোর:/i.test(line)) return 'score'
-  // Transport legs: "Bus X from A → B", "MRT from", "Then bus", "rickshaw"
   if (/^(Bus|Then bus|Then rickshaw|MRT|Rickshaw|Pathao|Uber|বাস|তারপর|মেট্রো|রিকশা)/i.test(line.trim())) return 'transport'
-  // Cost/time parentheses: "(15 taka, 25 min)"
-  if (/^\(.*taka.*min\)|^\(.*টাকা.*মিনিট\)/.test(line.trim())) return 'cost'
-  // Total lines: "Total: 25 taka", "মোট:"
+  if (/^\(.*taka.*min\)|\(.*টাকা.*মিনিট\)/.test(line.trim())) return 'cost'
   if (/^Total:|^মোট:/.test(line.trim())) return 'total'
-  // Total time: "Total time:", "মোট সময়:"
   if (/^Total time:|^মোট সময়:/.test(line.trim())) return 'total-time'
-  // Warnings: start with ⚠️
   if (line.trim().startsWith('⚠️')) return 'warning'
-  // Advice lines: "Avoid...", "Leave before...", "Take...", "সিএনজি এড়িয়ে"
   if (/^(Avoid|Leave|Take|Do not|Don't|সিএনজি এড়|বের হন|ব্যবহার)/i.test(line.trim())) return 'advice'
   return 'text'
 }
 
 function FormattedMessage({ content }: { content: string }) {
   const lines = content.split('\n')
-
   return (
     <div className="formatted-message">
       {lines.map((line, i) => {
         const type = classifyLine(line)
-        if (type === 'spacer') return <div key={i} className="msg-spacer" />
-        if (type === 'header') return <div key={i} className="msg-header">{line}</div>
-        if (type === 'section') return <div key={i} className="msg-section">{line}</div>
-        if (type === 'score') return <div key={i} className="msg-score">{line}</div>
-        if (type === 'transport') return <div key={i} className="msg-transport">{line}</div>
-        if (type === 'cost') return <div key={i} className="msg-cost">{line}</div>
-        if (type === 'total') return <div key={i} className="msg-total">{line}</div>
+        if (type === 'spacer')     return <div key={i} className="msg-spacer" />
+        if (type === 'header')     return <div key={i} className="msg-header">{line}</div>
+        if (type === 'section')    return <div key={i} className="msg-section">{line}</div>
+        if (type === 'score')      return <div key={i} className="msg-score">{line}</div>
+        if (type === 'transport')  return <div key={i} className="msg-transport">{line}</div>
+        if (type === 'cost')       return <div key={i} className="msg-cost">{line}</div>
+        if (type === 'total')      return <div key={i} className="msg-total">{line}</div>
         if (type === 'total-time') return <div key={i} className="msg-total-time">{line}</div>
-        if (type === 'warning') return <div key={i} className="msg-warning">{line}</div>
-        if (type === 'advice') return <div key={i} className="msg-advice">{line}</div>
+        if (type === 'warning')    return <div key={i} className="msg-warning">{line}</div>
+        if (type === 'advice')     return <div key={i} className="msg-advice">{line}</div>
         return <div key={i} className="msg-text">{line}</div>
       })}
     </div>
@@ -96,6 +75,7 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [voiceLang, setVoiceLang] = useState<'bangla' | 'english'>('english')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -103,11 +83,18 @@ export function ChatInterface() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Auto-detect voice language from input
+  useEffect(() => {
+    const hasBangla = /[\u0980-\u09FF]/.test(input)
+    setVoiceLang(hasBangla ? 'bangla' : 'english')
+  }, [input])
+
   function buildConversationHistory() {
     return messages
       .filter(m => m.id !== 'welcome')
       .map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
+        content: m.content,
         parts: [{ text: m.content }]
       }))
   }
@@ -149,13 +136,12 @@ export function ChatInterface() {
 
       setMessages(prev => [...prev, assistantMessage])
     } catch {
-      const errorMessage: ChatMessage = {
+      setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I am having trouble right now. For safety, please delay travel if it is raining. Try again in 1 minute.',
+        content: 'Connection issue. Quick tip: MRT Line 6 is always the safest option in Dhaka. Try again in a moment.',
         timestamp: new Date()
-      }
-      setMessages(prev => [...prev, errorMessage])
+      }])
     } finally {
       setIsLoading(false)
       inputRef.current?.focus()
@@ -168,43 +154,61 @@ export function ChatInterface() {
   }
 
   function handleQuickAction(text: string) {
-    const isEmergency = text.toLowerCase().includes('already left')
-    sendMessage(text, isEmergency)
+    sendMessage(text, text.toLowerCase().includes('already left'))
+  }
+
+  // Voice transcript handler — fills input and auto-sends
+  function handleVoiceTranscript(transcript: string) {
+    setInput(transcript)
+    // Small delay so user sees what was heard
+    setTimeout(() => sendMessage(transcript), 400)
   }
 
   return (
     <div className="chat-container">
+      {/* Smart Departure Timer — above chat */}
+      <div className="timer-row">
+        <DepartureTimer />
+      </div>
+
       {/* Messages Area */}
       <div className="messages-area">
-        {messages.map(msg => (
-          <div key={msg.id} className={`message ${msg.role}`}>
-            {msg.role === 'assistant' && (
-              <div className="ai-avatar">SD</div>
-            )}
-            <div className={`message-bubble ${msg.role}`}>
-              {msg.role === 'assistant'
-                ? <FormattedMessage content={msg.content} />
-                : <span>{msg.content}</span>
-              }
-              {/* Show meta badge if available */}
-              {msg.meta && (
-                <div className="meta-badges">
-                  {msg.meta.weather.isRaining && (
-                    <span className="meta-badge badge-rain">🌧 Rain active</span>
-                  )}
-                  {msg.meta.alertCount > 0 && (
-                    <span className="meta-badge badge-alert">🚨 {msg.meta.alertCount} alert{msg.meta.alertCount > 1 ? 's' : ''}</span>
-                  )}
-                  {msg.meta.reportCount > 0 && (
-                    <span className="meta-badge badge-report">👥 {msg.meta.reportCount} report{msg.meta.reportCount > 1 ? 's' : ''}</span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+        {messages.map(msg => {
+          const sourceInfo = msg.meta?.source ? AI_SOURCE[msg.meta.source as keyof typeof AI_SOURCE] : null
+          return (
+            <div key={msg.id} className={`message ${msg.role}`}>
+              {msg.role === 'assistant' && <div className="ai-avatar">SD</div>}
+              <div className={`message-bubble ${msg.role}`}>
+                {msg.role === 'assistant'
+                  ? <FormattedMessage content={msg.content} />
+                  : <span>{msg.content}</span>
+                }
 
-        {/* Loading indicator */}
+                {/* Source + Meta badges */}
+                {msg.meta && (
+                  <div className="meta-badges">
+                    {sourceInfo && (
+                      <span className={`meta-badge ai-source-badge ${sourceInfo.cls}`}>
+                        <sourceInfo.icon size={10} />
+                        {sourceInfo.label}
+                      </span>
+                    )}
+                    {msg.meta.weather.isRaining && (
+                      <span className="meta-badge badge-rain">🌧 Rain active</span>
+                    )}
+                    {msg.meta.alertCount > 0 && (
+                      <span className="meta-badge badge-alert">🚨 {msg.meta.alertCount} alert{msg.meta.alertCount > 1 ? 's' : ''}</span>
+                    )}
+                    {msg.meta.reportCount > 0 && (
+                      <span className="meta-badge badge-report">👥 {msg.meta.reportCount} report{msg.meta.reportCount > 1 ? 's' : ''}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+
         {isLoading && (
           <div className="message assistant">
             <div className="ai-avatar">SD</div>
@@ -233,6 +237,12 @@ export function ChatInterface() {
             lang="bn"
             dir="auto"
           />
+          {/* 🎙️ Voice Input Button */}
+          <VoiceInput
+            onTranscript={handleVoiceTranscript}
+            disabled={isLoading}
+            language={voiceLang}
+          />
           <button
             type="submit"
             className="send-btn"
@@ -252,6 +262,7 @@ export function ChatInterface() {
               className={`quick-action-btn ${action.color}`}
               onClick={() => handleQuickAction(action.text)}
               disabled={isLoading}
+              id={`quick-action-${i}`}
             >
               <action.icon size={14} />
               <span>{action.text}</span>

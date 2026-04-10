@@ -779,3 +779,187 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* === AI Source Badges === */
+.ai-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-groq {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+}
+
+.badge-gemini {
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+}
+
+.badge-local {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+/* === Voice Input Button === */
+.voice-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.voice-btn:hover:not(:disabled) {
+  background: rgba(29, 233, 182, 0.1);
+  border-color: var(--accent-teal);
+  color: var(--accent-teal);
+}
+
+.voice-btn-active {
+  background: rgba(255, 59, 59, 0.15) !important;
+  border-color: rgba(255, 59, 59, 0.5) !important;
+  color: #ff6b6b !important;
+  animation: pulse-mic 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-mic {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 59, 0.3); }
+  50%       { box-shadow: 0 0 0 8px rgba(255, 59, 59, 0); }
+}
+
+.voice-icon-active { color: #ff6b6b; }
+.voice-icon-spin   { animation: spin 0.8s linear infinite; }
+
+/* === Smart Departure Timer === */
+.timer-row {
+  padding: 8px 16px 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.departure-timer {
+  position: relative;
+}
+
+.timer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 5px 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.timer-toggle:hover {
+  background: rgba(29, 233, 182, 0.08);
+  border-color: rgba(29, 233, 182, 0.3);
+  color: var(--accent-teal);
+}
+
+.timer-badge {
+  font-weight: 700;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.timer-safe   { background: rgba(0,230,118,0.2); color: var(--accent-green); }
+.timer-warn   { background: rgba(255,193,7,0.2);  color: var(--accent-yellow); }
+.timer-urgent { background: rgba(255,59,59,0.2);  color: #ff6b6b; animation: pulse-badge 1s ease infinite; }
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.6; }
+}
+
+.timer-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  z-index: 100;
+  animation: slide-down 0.2s ease;
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.timer-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.timer-routes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.timer-route-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.timer-route-btn.active,
+.timer-route-btn:hover {
+  background: rgba(29,233,182,0.1);
+  border-color: var(--accent-teal);
+  color: var(--accent-teal);
+}
+
+.timer-advice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.timer-advice.timer-safe   { background: rgba(0,230,118,0.1); color: var(--accent-green); border-left: 3px solid var(--accent-green); }
+.timer-advice.timer-warn   { background: rgba(255,193,7,0.1);  color: var(--accent-yellow); border-left: 3px solid var(--accent-yellow); }
+.timer-advice.timer-urgent { background: rgba(255,59,59,0.1);  color: #ff6b6b; border-left: 3px solid #ff6b6b; }
+
+.timer-footer {
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: center;
+  opacity: 0.6;
+}
+

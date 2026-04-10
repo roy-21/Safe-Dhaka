@@ -1,6 +1,7 @@
 // Safe Dhaka — Main AI Chat Endpoint
-// Uses official @google/generative-ai SDK with smart local fallback
+// AI Chain: Groq (primary, free) → Gemini (fallback) → Local Knowledge (always works)
 import { NextRequest, NextResponse } from 'next/server'
+import Groq from 'groq-sdk'
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai'
 import { getDhakaWeather } from '@/lib/weather'
 import { getActiveAlerts } from '@/lib/alerts'
@@ -8,10 +9,9 @@ import { getRecentReports } from '@/lib/community'
 import { buildSystemPrompt, EMERGENCY_PROMPT } from '@/lib/prompt-builder'
 import { generateLocalResponse } from '@/lib/local-fallback'
 
-// Bangla Unicode range + Banglish romanized keywords
 const BANGLISH_KEYWORDS = [
-  'ami', 'amar', 'kothay', 'jabo', 'jete', 'chai',
-  'theke', 'apni', 'bhai', 'apa', 'dada', 'lagbe', 'koto', 'kemon',
+  'ami', 'amar', 'kothay', 'jabo', 'jete', 'chai', 'theke',
+  'apni', 'bhai', 'apa', 'dada', 'lagbe', 'koto', 'kemon',
   'mirpur', 'motijheel', 'gulshan', 'uttara', 'dhanmondi', 'banani'
 ]
 
@@ -37,19 +37,25 @@ function detectBudget(text: string): number | undefined {
 
 function isRushHour(): boolean {
   const now = new Date()
-  const bdTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
-  const hour = bdTime.getHours()
-  return (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19)
+  const bd = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }))
+  const h = bd.getHours()
+  return (h >= 7 && h <= 9) || (h >= 17 && h <= 19)
 }
 
-// Initialize Gemini SDK
-function getGeminiClient() {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey || apiKey === 'your_gemini_key_here') return null
-  return new GoogleGenerativeAI(apiKey)
+// ── GROQ CLIENT (primary — llama-3.3-70b, free tier) ─────
+function getGroqClient(): Groq | null {
+  const key = process.env.GROQ_API_KEY
+  if (!key || key.trim() === '') return null
+  return new Groq({ apiKey: key })
 }
 
-// Safety settings — allow travel/geography content
+// ── GEMINI CLIENT (fallback) ──────────────────────────────
+function getGeminiClient(): GoogleGenerativeAI | null {
+  const key = process.env.GEMINI_API_KEY
+  if (!key || key === 'your_gemini_key_here') return null
+  return new GoogleGenerativeAI(key)
+}
+
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
   { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -61,14 +67,13 @@ export async function POST(req: NextRequest) {
   try {
     const { message, conversationHistory = [], isEmergency = false } = await req.json()
 
-    // Input validation
     if (!message || !message.trim()) {
       return NextResponse.json({
         reply: 'Please tell me where you want to go.\nFor example: "Mirpur 10 to Motijheel" or "মিরপুর থেকে মতিঝিল কীভাবে যাবো?"'
       })
     }
 
-    // Collect live data in parallel — always fast with individual timeouts
+    // Collect live data in parallel
     const [weather, alerts, communityReports] = await Promise.all([
       getDhakaWeather(),
       getActiveAlerts(),
@@ -91,41 +96,31 @@ export async function POST(req: NextRequest) {
     }
 
     const systemPrompt = isEmergency ? EMERGENCY_PROMPT : buildSystemPrompt(ctx)
+    const userMsg = message.trim()
 
-    // ── TRY GEMINI FIRST ──────────────────────────────────────
-    const genAI = getGeminiClient()
+    // ── 1. TRY GROQ (primary — llama-3.3-70b-versatile) ───
+    const groq = getGroqClient()
+    if (groq) {
+      try {
+        const history = conversationHistory.slice(-6).map((m: { role: string; content: string }) => ({
+          role: m.role === 'model' ? 'assistant' : 'user' as 'assistant' | 'user',
+          content: m.content || (m as { parts?: { text: string }[] }).parts?.[0]?.text || ''
+        }))
 
-    if (genAI) {
-      const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
+        const completion = await groq.chat.completions.create({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...history,
+            { role: 'user', content: userMsg }
+          ],
+          temperature: 0.4,
+          max_tokens: 800,
+          top_p: 0.8,
+        })
 
-      for (const modelName of models) {
-        try {
-          const model = genAI.getGenerativeModel({
-            model: modelName,
-            systemInstruction: systemPrompt,
-            generationConfig: {
-              temperature: 0.4,
-              maxOutputTokens: 800,
-              topP: 0.8,
-            },
-            safetySettings: SAFETY_SETTINGS,
-          })
-
-          // Build chat history from conversation
-          const history = conversationHistory.slice(-6).map((m: { role: string; parts: { text: string }[] }) => ({
-            role: m.role === 'model' ? 'model' : 'user',
-            parts: m.parts
-          }))
-
-          const chat = model.startChat({ history })
-          const result = await chat.sendMessage(message.trim())
-          const reply = result.response.text()
-
-          if (!reply || reply.trim() === '') {
-            console.warn(`${modelName} returned empty response`)
-            continue
-          }
-
+        const reply = completion.choices[0]?.message?.content
+        if (reply && reply.trim()) {
           return NextResponse.json({
             reply,
             meta: {
@@ -133,26 +128,60 @@ export async function POST(req: NextRequest) {
               alertCount: alerts.length,
               reportCount: communityReports.length,
               timestamp: now.toISOString(),
-              source: 'gemini'
+              source: 'groq',
+              model: 'llama-3.3-70b'
             }
           })
+        }
+      } catch (err: unknown) {
+        console.warn('Groq failed:', (err as Error).message?.slice(0, 100))
+      }
+    }
 
-        } catch (err: unknown) {
-          const status = (err as { status?: number })?.status
-          const message_err = (err as { message?: string })?.message || ''
-          console.warn(`Gemini ${modelName} failed:`, status, message_err.slice(0, 100))
-          // Continue to next model on quota/rate errors
-          if (status === 429 || status === 503 || message_err.includes('quota') || message_err.includes('429')) {
-            continue
+    // ── 2. TRY GEMINI (fallback) ───────────────────────────
+    const genAI = getGeminiClient()
+    if (genAI) {
+      const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
+      for (const modelName of models) {
+        try {
+          const model = genAI.getGenerativeModel({
+            model: modelName,
+            systemInstruction: systemPrompt,
+            generationConfig: { temperature: 0.4, maxOutputTokens: 800, topP: 0.8 },
+            safetySettings: SAFETY_SETTINGS,
+          })
+          const history = conversationHistory.slice(-6).map((m: { role: string; parts: { text: string }[] }) => ({
+            role: m.role === 'model' ? 'model' : 'user',
+            parts: m.parts
+          }))
+          const chat = model.startChat({ history })
+          const result = await chat.sendMessage(userMsg)
+          const reply = result.response.text()
+          if (reply?.trim()) {
+            return NextResponse.json({
+              reply,
+              meta: {
+                weather: { isRaining: weather.isRaining, floodRisk: weather.floodRisk },
+                alertCount: alerts.length,
+                reportCount: communityReports.length,
+                timestamp: now.toISOString(),
+                source: 'gemini',
+                model: modelName
+              }
+            })
           }
+        } catch (err: unknown) {
+          const msg = (err as Error).message || ''
+          console.warn(`Gemini ${modelName} failed:`, msg.slice(0, 80))
+          if (msg.includes('429') || msg.includes('quota')) continue
           break
         }
       }
     }
 
-    // ── LOCAL FALLBACK — always gives useful Dhaka response ───
-    console.log('Using local fallback for:', message.slice(0, 50))
-    const localReply = generateLocalResponse(message, weather.isRaining, isRushHour())
+    // ── 3. LOCAL KNOWLEDGE FALLBACK (always works) ─────────
+    console.log('Using local fallback for:', userMsg.slice(0, 50))
+    const localReply = generateLocalResponse(userMsg, weather.isRaining, isRushHour())
 
     return NextResponse.json({
       reply: localReply,
@@ -161,14 +190,14 @@ export async function POST(req: NextRequest) {
         alertCount: alerts.length,
         reportCount: communityReports.length,
         timestamp: now.toISOString(),
-        source: 'local' // Indicates fallback was used
+        source: 'local'
       }
     })
 
   } catch (error) {
     console.error('Safe Dhaka API error:', error)
     return NextResponse.json(
-      { reply: 'Please try again in a moment. If urgent: MRT Line 6 is Dhaka\'s fastest route. Bus 8 goes Mirpur→Motijheel for 10-20 taka.' },
+      { reply: 'Please try again. Quick tip: MRT Line 6 Mirpur→Motijheel = 22 min, 50 taka.' },
       { status: 200 }
     )
   }

@@ -35,6 +35,8 @@ export interface ResponseMeta {
   alertCount: number
   reportCount: number
   timestamp: string
+  source?: 'groq' | 'gemini' | 'local'
+  model?: string
 }
 
 export interface CommunityReport {
