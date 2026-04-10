@@ -45,40 +45,48 @@ const QUICK_ACTIONS = [
   }
 ]
 
-// Render message with smart formatting:
-// Lines starting with emoji headers get styled
-// Step lines get indented
-// Warning lines get highlighted
+// Smart line classifier for the clean human-friendly format
+function classifyLine(line: string): string {
+  if (!line.trim()) return 'spacer'
+  // Summary header lines: "Budget route found:", "Fastest route:", "School route check:"
+  if (/^(Budget route|Fastest route|Best route|School route|Emergency|MRT|Metro|মেট্রো রেল|স্কুল রুট|বন্যা|সবচেয়ে দ্রুত|এখনকার সেরা|বাজেট রুট)/i.test(line.trim())) return 'header'
+  // Section labels: "Best option right now:", "Best route this morning:"
+  if (/right now:|this morning:|এখনকার সেরা পথ:|সেরা পথ:/i.test(line)) return 'section'
+  // Safety score lines
+  if (/safety score:|নিরাপত্তা স্কোর:/i.test(line)) return 'score'
+  // Transport legs: "Bus X from A → B", "MRT from", "Then bus", "rickshaw"
+  if (/^(Bus|Then bus|Then rickshaw|MRT|Rickshaw|Pathao|Uber|বাস|তারপর|মেট্রো|রিকশা)/i.test(line.trim())) return 'transport'
+  // Cost/time parentheses: "(15 taka, 25 min)"
+  if (/^\(.*taka.*min\)|^\(.*টাকা.*মিনিট\)/.test(line.trim())) return 'cost'
+  // Total lines: "Total: 25 taka", "মোট:"
+  if (/^Total:|^মোট:/.test(line.trim())) return 'total'
+  // Total time: "Total time:", "মোট সময়:"
+  if (/^Total time:|^মোট সময়:/.test(line.trim())) return 'total-time'
+  // Warnings: start with ⚠️
+  if (line.trim().startsWith('⚠️')) return 'warning'
+  // Advice lines: "Avoid...", "Leave before...", "Take...", "সিএনজি এড়িয়ে"
+  if (/^(Avoid|Leave|Take|Do not|Don't|সিএনজি এড়|বের হন|ব্যবহার)/i.test(line.trim())) return 'advice'
+  return 'text'
+}
+
 function FormattedMessage({ content }: { content: string }) {
   const lines = content.split('\n')
 
   return (
     <div className="formatted-message">
       {lines.map((line, i) => {
-        if (!line.trim()) return <div key={i} className="msg-spacer" />
-
-        // Safety score line
-        if (line.includes('SAFETY SCORE') || line.includes('🛡')) {
-          return <div key={i} className="msg-safety-score">{line}</div>
-        }
-        // Section headers (emoji + caps)
-        if (/^[🗺⏱💰🚨👥📍✅⚠️🔶🚫]/.test(line)) {
-          return <div key={i} className="msg-section-header">{line}</div>
-        }
-        // Step lines
-        if (/^\s*Step \d+:/.test(line)) {
-          return <div key={i} className="msg-step">{line}</div>
-        }
-        // Warning lines
-        if (line.startsWith('⚠️ WARNING') || line.startsWith('⚠️ WARNING')) {
-          return <div key={i} className="msg-warning">{line}</div>
-        }
-        // Separator lines
-        if (/^---+$/.test(line.trim())) {
-          return <div key={i} className="msg-divider" />
-        }
-        // Normal lines
-        return <div key={i} className="msg-line">{line}</div>
+        const type = classifyLine(line)
+        if (type === 'spacer') return <div key={i} className="msg-spacer" />
+        if (type === 'header') return <div key={i} className="msg-header">{line}</div>
+        if (type === 'section') return <div key={i} className="msg-section">{line}</div>
+        if (type === 'score') return <div key={i} className="msg-score">{line}</div>
+        if (type === 'transport') return <div key={i} className="msg-transport">{line}</div>
+        if (type === 'cost') return <div key={i} className="msg-cost">{line}</div>
+        if (type === 'total') return <div key={i} className="msg-total">{line}</div>
+        if (type === 'total-time') return <div key={i} className="msg-total-time">{line}</div>
+        if (type === 'warning') return <div key={i} className="msg-warning">{line}</div>
+        if (type === 'advice') return <div key={i} className="msg-advice">{line}</div>
+        return <div key={i} className="msg-text">{line}</div>
       })}
     </div>
   )

@@ -1,23 +1,28 @@
 // Safe Dhaka — Smart Local Fallback Engine
-// When Gemini is unavailable, this generates real helpful responses
-// using the local Dhaka knowledge base. Never shows a useless error.
+// When Gemini is unavailable, generates real helpful responses in the correct format
+// Output matches: conversational, human-friendly, no markdown/bullets
 
 import { DHAKA_KNOWLEDGE } from './dhaka-knowledge'
 
-// Keywords for route detection
+const BANGLISH_KEYWORDS = [
+  'ami', 'amar', 'kothay', 'jabo', 'jete', 'chai', 'theke',
+  'apni', 'bhai', 'apa', 'dada', 'lagbe', 'koto', 'kemon',
+  'mirpur', 'motijheel', 'gulshan', 'uttara', 'dhanmondi', 'banani'
+]
+
 const ROUTE_KEYWORDS: Record<string, string[]> = {
   mirpur:      ['mirpur', 'মিরপুর'],
-  motijheel:   ['motijheel', 'motizheel', 'মতিঝিল'],
+  motijheel:   ['motijheel', 'মতিঝিল'],
   uttara:      ['uttara', 'উত্তরা'],
-  dhanmondi:   ['dhanmondi', 'dhanmandi', 'ধানমন্ডি'],
+  dhanmondi:   ['dhanmondi', 'ধানমন্ডি'],
   gulshan:     ['gulshan', 'গুলশান'],
   banani:      ['banani', 'বনানী'],
-  farmgate:    ['farmgate', 'farm gate', 'ফার্মগেট'],
+  farmgate:    ['farmgate', 'ফার্মগেট'],
   shahbagh:    ['shahbagh', 'শাহবাগ'],
   buet:        ['buet', 'বুয়েট'],
-  airport:     ['airport', 'hazrat shahjalal', 'বিমানবন্দর'],
-  old_dhaka:   ['old dhaka', 'sadarghat', 'chawkbazar', 'পুরান ঢাকা'],
+  airport:     ['airport', 'বিমানবন্দর'],
   bashundhara: ['bashundhara', 'বসুন্ধরা'],
+  old_dhaka:   ['old dhaka', 'sadarghat', 'পুরান ঢাকা'],
 }
 
 function detectZone(text: string): string[] {
@@ -28,222 +33,377 @@ function detectZone(text: string): string[] {
 }
 
 function isBangla(text: string): boolean {
-  return /[\u0980-\u09FF]/.test(text)
+  if (/[\u0980-\u09FF]/.test(text)) return true
+  const lower = text.toLowerCase()
+  return BANGLISH_KEYWORDS.some(k => lower.includes(k))
 }
 
-function isSchoolQuery(text: string): boolean {
-  return /school|child|\u099b\u09c7\u09b2\u09c7|\u09ae\u09c7\u09af\u09bc\u09c7|\u09b8\u09cd\u0995\u09c1\u09b2|\u09a6\u09c7\u09b0 \u09b0\u09c1\u099f|safe.{0,15}route/i.test(text)
+function isSchool(text: string): boolean {
+  return /school|child|ছেলে|মেয়ে|স্কুল|safe.{0,15}route/i.test(text)
+}
+function isBudget(text: string): boolean {
+  return /taka|tk|bdt|টাকা|budget|cheap|সস্তা/i.test(text)
+}
+function isFlood(text: string): boolean {
+  return /flood|rain|waterlog|বন্যা|জল|বৃষ্টি/i.test(text)
+}
+function isMRT(text: string): boolean {
+  return /metro|mrt|মেট্রো/i.test(text)
+}
+function isEmergency(text: string): boolean {
+  return /emergency|stuck|help|urgent|সাহায্য|দ্রুত/i.test(text)
 }
 
-function isBudgetQuery(text: string): boolean {
-  return /taka|tk|bdt|\u099f\u09be\u0995\u09be|budget|cheap|affordable|\u09b8\u09b8\u09cd\u09a4\u09be/i.test(text)
+// Extract budget amount
+function extractBudget(text: string): number | null {
+  const m1 = text.match(/(\d+)\s*(taka|tk)/i)
+  if (m1) return parseInt(m1[1])
+  const m2 = text.match(/(\d+)\s*টাকা/)
+  if (m2) return parseInt(m2[1])
+  return null
 }
 
-function isFloodQuery(text: string): boolean {
-  return /flood|rain|waterlog|\u09ac\u09a8\u09cd\u09af\u09be|\u099c\u09b2|\u09ac\u09c3\u09b7\u09cd\u099f\u09bf/i.test(text)
+// ─── KNOWN ROUTES (new clean format) ──────────────────────
+
+interface KnownRoute {
+  from: string
+  to: string
+  en: string
+  bn: string
 }
 
-function isEmergencyQuery(text: string): boolean {
-  return /emergency|stuck|help|urgent|\u09b8\u09be\u09b9\u09be\u09af\u09cd\u09af|\u09a6\u09cd\u09b0\u09c1\u09a4/i.test(text)
-}
-
-function isMRTQuery(text: string): boolean {
-  return /metro|mrt|\u09ae\u09c7\u099f\u09cd\u09b0\u09cb|\u09ae\u09c7\u099f\u09cd\u09b0\u09cb \u09b0\u09c7\u09b2/i.test(text)
-}
-
-// ─────────────────────────────────────────
-// KNOWN COMMON ROUTES — fully pre-built
-// ─────────────────────────────────────────
-const KNOWN_ROUTES: { from: string; to: string; response: string; bangla: string }[] = [
+const KNOWN_ROUTES: KnownRoute[] = [
   {
     from: 'mirpur', to: 'motijheel',
-    response: `🗺 ROUTE RIGHT NOW:
-  Step 1: Go to Mirpur 10 MRT Station
-  Step 2: Board MRT Line 6 towards Motijheel
-  Step 3: Get off at Motijheel Station — you have arrived
+    en: `Fastest route right now:
 
-⏱ TIME: 22 minutes
-💰 COST: 50 taka (MRT)
+MRT from Mirpur 10 → Motijheel
+(50 taka, 22 min)
 
-Alternative if budget is very tight:
-  Bus 8 from Mirpur 10 → Motijheel — 10-20 taka, but 60-90 min in traffic.
+No stops needed — direct service.
 
-MRT is the best choice. Fast, safe, air-conditioned.`,
-    bangla: `🗺 এখনই রুট:
-  ধাপ ১: মিরপুর ১০ মেট্রো স্টেশনে যান
-  ধাপ ২: এমআরটি লাইন ৬ এ উঠুন মতিঝিলের দিকে
-  ধাপ ৩: মতিঝিল স্টেশনে নামুন — পৌঁছে গেছেন
+Budget alternative:
+Bus 8 from Mirpur 10 → Motijheel
+(15 taka, 60-90 min in traffic)
 
-⏱ সময়: ২২ মিনিট
-💰 খরচ: ৫০ টাকা (মেট্রো রেল)
+MRT is the smart choice — saves you 60 min.`,
+    bn: `সবচেয়ে দ্রুত রুট:
 
-বিকল্প (কম বাজেটে):
-  বাস ৮ — মিরপুর ১০ থেকে মতিঝিল — ১০-২০ টাকা, তবে ৬০-৯০ মিনিট।
+মেট্রো রেল — মিরপুর ১০ থেকে মতিঝিল
+(৫০ টাকা, ২২ মিনিট)
 
-মেট্রো রেলই সেরা পছন্দ।`
+সরাসরি সার্ভিস — কোনো পরিবর্তন লাগবে না।
+
+কম খরচের বিকল্প:
+বাস ৮ — মিরপুর ১০ থেকে মতিঝিল
+(১৫ টাকা, ৬০-৯০ মিনিট)
+
+মেট্রো রেলই সেরা — ৬০ মিনিট বাঁচাবে।`
+  },
+  {
+    from: 'mirpur', to: 'motijheel', // budget version handled separately
+    en: '', bn: ''
   },
   {
     from: 'uttara', to: 'motijheel',
-    response: `🗺 ROUTE RIGHT NOW:
-  Step 1: Go to Uttara North MRT Station
-  Step 2: Board MRT Line 6 — Motijheel direction
-  Step 3: Get off at Motijheel Station (final stop)
+    en: `Fastest route right now:
 
-⏱ TIME: 28 minutes
-💰 COST: 80 taka
+MRT from Uttara North → Motijheel
+(80 taka, 28 min)
 
-This is the ONLY sensible route. Road takes 90-120 min during peak hours.`,
-    bangla: `🗺 এখনই রুট:
-  ধাপ ১: উত্তরা নর্থ মেট্রো স্টেশনে যান
-  ধাপ ২: এমআরটি লাইন ৬ — মতিঝিলের দিকে উঠুন
-  ধাপ ৩: মতিঝিল স্টেশনে নামুন
+Direct — no changes needed.
 
-⏱ সময়: ২৮ মিনিট
-💰 খরচ: ৮০ টাকা
+Road would take 90-120 min during peak hours.
+MRT is the only sensible option.`,
+    bn: `সবচেয়ে দ্রুত রুট:
 
-মেট্রো রেলই একমাত্র সঠিক পথ। রাস্তায় ৯০-১২০ মিনিট লাগবে।`
+মেট্রো রেল — উত্তরা নর্থ থেকে মতিঝিল
+(৮০ টাকা, ২৮ মিনিট)
+
+সরাসরি — কোনো পরিবর্তন নেই।
+
+রাস্তায় ৯০-১২০ মিনিট লাগবে পিক আওয়ারে।`
   },
   {
     from: 'mirpur', to: 'dhanmondi',
-    response: `🗺 ROUTE RIGHT NOW:
-  Step 1: Take Bus 25 or 29 from Mirpur 10
-  Step 2: Get off at Science Lab intersection
-  Step 3: Take a rickshaw to your exact Dhanmondi destination
+    en: `Best route right now:
 
-⏱ TIME: 35-50 minutes (off-peak), 60-75 min (rush hour)
-💰 COST: 25-55 taka (bus 15-25 taka + rickshaw 20-30 taka)
+Bus 25 or 29 from Mirpur 10 → Science Lab
+(20 taka, 30-40 min)
+Then rickshaw to Dhanmondi
+(30-40 taka, 10-15 min)
 
-Avoid Farmgate during rush hour — take the Kalyanpur backroad bypass.`,
-    bangla: `🗺 এখনই রুট:
-  ধাপ ১: মিরপুর ১০ থেকে বাস ২৫ বা ২৯ নিন
-  ধাপ ২: সায়েন্স ল্যাব মোড়ে নামুন
-  ধাপ ৩: রিকশায় ধানমন্ডির নির্দিষ্ট গন্তব্যে যান
+Total: 50-60 taka | Total time: 45-55 min
 
-⏱ সময়: ৩৫-৫০ মিনিট
-💰 খরচ: ২৫-৫৫ টাকা`
-  },
-  {
-    from: 'gulshan', to: 'motijheel',
-    response: `🗺 ROUTE RIGHT NOW:
-  Step 1: Take Bus 56 from Gulshan 2 Circle
-  Step 2: Or take Uber/Pathao direct (25-40 min, 150-250 taka)
-  Step 3: Avoid Rampura Bridge during peak hours
+Avoid Farmgate during rush hour — use Kalyanpur backroad.`,
+    bn: `এখনকার সেরা পথ:
 
-⏱ TIME: 30-45 minutes
-💰 COST: Bus 20-30 taka | Uber 150-250 taka`,
-    bangla: `🗺 এখনই রুট:
-  ধাপ ১: গুলশান ২ সার্কেল থেকে বাস ৫৬ নিন
-  ধাপ ২: অথবা উবার/পাঠাও সরাসরি (১৫০-২৫০ টাকা)
+বাস ২৫ বা ২৯ — মিরপুর ১০ থেকে সায়েন্স ল্যাব
+(২০ টাকা, ৩০-৪০ মিনিট)
+তারপর রিকশায় ধানমন্ডি
+(৩০-৪০ টাকা, ১০-১৫ মিনিট)
 
-⏱ সময়: ৩০-৪৫ মিনিট
-💰 খরচ: বাস ২০-৩০ টাকা | উবার ১৫০-২৫০ টাকা`
+মোট: ৫০-৬০ টাকা | মোট সময়: ৪৫-৫৫ মিনিট
+
+রাশ আওয়ারে ফার্মগেট এড়িয়ে চলুন।`
   },
   {
     from: 'mirpur', to: 'buet',
-    response: `🗺 ROUTE RIGHT NOW:
-  Step 1: Go to Mirpur 10 MRT Station
-  Step 2: Board MRT Line 6 towards Motijheel
-  Step 3: Get off at Dhaka University Station
-  Step 4: Rickshaw 5 min to BUET main gate (Polashi side)
+    en: `Fastest route to BUET:
 
-⏱ TIME: 28 minutes total
-💰 COST: 50-65 taka (MRT 50 + rickshaw 15)`,
-    bangla: `🗺 এখনই রুট:
-  ধাপ ১: মিরপুর ১০ মেট্রো স্টেশনে যান
-  ধাপ ২: এমআরটি — ঢাকা বিশ্ববিদ্যালয় স্টেশনে নামুন
-  ধাপ ৩: রিকশায় ৫ মিনিট — বুয়েট মেইন গেট
+MRT from Mirpur 10 → Dhaka University Station
+(50 taka, 22 min)
+Then rickshaw to BUET main gate (Polashi side)
+(15 taka, 5 min)
 
-⏱ সময়: ২৮ মিনিট
-💰 খরচ: ৫০-৬৫ টাকা`
+Total: 65 taka | Total time: 28 min
+
+BUET gate is a 5-min rickshaw from DU station — easy.`,
+    bn: `বুয়েটের সবচেয়ে দ্রুত পথ:
+
+মেট্রো রেল — মিরপুর ১০ থেকে ঢাকা বিশ্ববিদ্যালয় স্টেশন
+(৫০ টাকা, ২২ মিনিট)
+তারপর রিকশায় বুয়েট মেইন গেট (পলাশী দিক)
+(১৫ টাকা, ৫ মিনিট)
+
+মোট: ৬৫ টাকা | মোট সময়: ২৮ মিনিট`
   },
   {
     from: 'uttara', to: 'dhanmondi',
-    response: `🗺 ROUTE RIGHT NOW:
-  Step 1: MRT from Uttara → Farmgate Station
-  Step 2: CNG from Farmgate to Dhanmondi (negotiate 80-120 taka)
+    en: `Best route right now:
 
-⏱ TIME: 30-45 minutes
-💰 COST: 90-160 taka total`,
-    bangla: `🗺 এখনই রুট:
-  ধাপ ১: এমআরটি — উত্তরা থেকে ফার্মগেট স্টেশন
-  ধাপ ২: ফার্মগেট থেকে সিএনজিতে ধানমন্ডি (৮০-১২০ টাকা)
+MRT from Uttara → Farmgate Station
+(50 taka, 20 min)
+Then CNG from Farmgate → Dhanmondi
+(80-120 taka, 15-20 min, negotiate before getting in)
 
-⏱ সময়: ৩০-৪৫ মিনিট
-💰 খরচ: ৯০-১৬০ টাকা`
+Total: 130-170 taka | Total time: 35-40 min`,
+    bn: `এখনকার সেরা পথ:
+
+মেট্রো রেল — উত্তরা থেকে ফার্মগেট স্টেশন
+(৫০ টাকা, ২০ মিনিট)
+তারপর সিএনজিতে ধানমন্ডি
+(৮০-১২০ টাকা, ১৫-২০ মিনিট, উঠার আগে দাম ঠিক করুন)
+
+মোট: ১৩০-১৭০ টাকা | মোট সময়: ৩৫-৪০ মিনিট`
+  },
+  {
+    from: 'gulshan', to: 'motijheel',
+    en: `Best route right now:
+
+Bus 56 from Gulshan 2 → Motijheel
+(25 taka, 35-45 min)
+
+Or Uber/Pathao if in a hurry
+(150-250 taka, 25-40 min)
+
+No MRT on this corridor yet — bus is your best bet.`,
+    bn: `এখনকার সেরা পথ:
+
+বাস ৫৬ — গুলশান ২ থেকে মতিঝিল
+(২৫ টাকা, ৩৫-৪৫ মিনিট)
+
+তাড়া থাকলে উবার/পাঠাও
+(১৫০-২৫০ টাকা, ২৫-৪০ মিনিট)
+
+এই রুটে এখনো মেট্রো নেই — বাসই সেরা।`
   }
 ]
 
-// ─────────────────────────────────────────
-// MAIN LOCAL FALLBACK FUNCTION
-// ─────────────────────────────────────────
-export function generateLocalResponse(message: string, isRaining: boolean, isRushHour: boolean): string {
+// ─── MAIN FALLBACK FUNCTION ────────────────────────────────
+
+export function generateLocalResponse(
+  message: string,
+  isRaining: boolean,
+  rushHour: boolean
+): string {
   const bangla = isBangla(message)
   const zones = detectZone(message)
+  const budget = extractBudget(message)
 
-  // Build context warnings
-  const warnings: string[] = []
-  if (isRaining) {
-    warnings.push(bangla
-      ? '⚠️ সতর্কতা: এখন বৃষ্টি হচ্ছে — মিরপুর রোড, ডেমরা, মালিবাগ এড়িয়ে চলুন।'
-      : '⚠️ WARNING: It is raining now. Avoid Mirpur Road, Demra, Malibagh — high flood risk.')
-  }
-  if (isRushHour) {
-    warnings.push(bangla
-      ? '⚠️ রাশ আওয়ার: সব সময়ের সাথে ৩০-৪৫ মিনিট যোগ করুন।'
-      : '⚠️ RUSH HOUR: Add 30-45 min to all estimates.')
-  }
+  // Build context suffix
+  const rainWarning = isRaining
+    ? (bangla
+        ? '\n⚠️ বৃষ্টি হচ্ছে — মিরপুর রোড, ডেমরা, মালিবাগ এড়িয়ে চলুন\nউঁচু রাস্তা বেছে নিন'
+        : '\n⚠️ Rain active — Mirpur Road, Demra, Malibagh risk flooding\nTake elevated roads')
+    : ''
+  const rushWarning = rushHour
+    ? (bangla
+        ? '\n⚠️ রাশ আওয়ার — সব সময়ে ৩০-৪৫ মিনিট যোগ করুন'
+        : '\n⚠️ Rush hour — add 30-45 min to all estimates')
+    : ''
 
-  const warningText = warnings.join('\n')
-
-  // 1. Check school route query
-  if (isSchoolQuery(message)) {
+  // 1. School route
+  if (isSchool(message)) {
+    const score = isRaining ? 62 : 88
+    const status = isRaining ? (bangla ? '🟠 সতর্কতার সাথে যান' : '🟠 Use caution') : (bangla ? '🟢 নিরাপদ' : '✅ Safe today')
     return bangla
-      ? `🛡 নিরাপত্তা স্কোর: ${isRaining ? '65/100 — 🟠 সতর্কতার সাথে যান' : '88/100 — 🟡 নিরাপদ'}\n\n${warningText ? warningText + '\n\n' : ''}🗺 স্কুল রুটের পরামর্শ:\n  ধাপ ১: সকাল ৭:৩০ এর আগে রওনা হন — যানজট এড়াতে\n  ধাপ ২: মেট্রো রেল থাকলে সেটি ব্যবহার করুন\n  ধাপ ৩: বৃষ্টিতে উঁচু রাস্তা দিয়ে যান (গুলশান এভিনিউ, ধানমন্ডি ২৭)\n\n⏱ সকাল ৮টার মধ্যে পৌঁছানো উচিত\n💰 খরচ: বাস ১০-৩০ টাকা | সিএনজি ৬০-১৫০ টাকা\n\nআপনার সন্তান নিরাপদে স্কুলে পৌঁছাক।`
-      : `🛡 SAFETY SCORE: ${isRaining ? '65/100 — 🟠 USE CAUTION' : '88/100 — 🟡 SAFE with care'}\n\n${warningText ? warningText + '\n\n' : ''}🗺 SCHOOL ROUTE ADVICE:\n  Step 1: Leave before 7:30am to beat school rush traffic\n  Step 2: Use MRT if your route passes Mirpur/Farmgate/Motijheel\n  Step 3: During rain, stick to elevated roads (Gulshan Ave, Dhanmondi 27)\n\n⏱ Aim to arrive by 8:00am\n💰 COST: Bus 10-30 taka | CNG 60-150 taka\n\nYour child's safety is the priority. Leave early.`
+      ? `স্কুল রুট চেক:
+
+নিরাপত্তা স্কোর: ${score}/100 — ${status}
+
+এখনকার সেরা পথ:
+বাস ৮ — মিরপুর ১০ থেকে ফার্মগেট
+(২০ টাকা, ২৫ মিনিট)
+তারপর রিকশায় স্কুল গেটে
+(৩০ টাকা, ১০ মিনিট)
+
+মোট: ৫০ টাকা | মোট সময়: ৩৫ মিনিট
+
+সকাল ৭:৩০ এর আগে বের হন — স্কুলের ভিড় ৭:৪৫ থেকে শুরু।${rainWarning}`
+      : `School route check:
+
+Safety score: ${score}/100 — ${status}
+
+Best route this morning:
+Bus 8 from Mirpur 10 → Farmgate
+(20 taka, 25 min)
+Then rickshaw to school gate
+(30 taka, 10 min)
+
+Total: 50 taka | Total time: 35 min
+
+Leave before 7:30am — school rush starts at 7:45am.${rainWarning}`
   }
 
-  // 2. Check flood query
-  if (isFloodQuery(message)) {
+  // 2. Budget route with specific amount
+  if (budget && budget <= 50 && zones.includes('mirpur') && zones.includes('motijheel')) {
     return bangla
-      ? `🌊 বন্যা/জলাবদ্ধতার তথ্য:\n\n🔴 এড়িয়ে চলুন:\n• মিরপুর রোড (কল্যাণপুর-শ্যামলী)\n• ডেমরা-যাত্রাবাড়ী রোড\n• মালিবাগ-মৌচাক\n• রায়েরবাজার-বসিলা\n\n🟢 নিরাপদ রাস্তা:\n• গুলশান অ্যাভিনিউ (উঁচু ও ভালো ড্রেনেজ)\n• ধানমন্ডি ২৭ নম্বর\n• উত্তরা সেক্টর ৩-৭\n• মেট্রো রেল (বন্যায় সবচেয়ে ভালো)\n\n💡 টিপস: বন্যায় রিকশা সবচেয়ে ভালো — গাড়ির চেয়ে উঁচুতে বসা যায়।`
-      : `🌊 FLOOD INTELLIGENCE:\n\n🔴 AVOID THESE ROADS:\n• Mirpur Road (Kalyanpur to Shyamoli)\n• Demra-Jatrabari Road\n• Malibagh-Mouchak\n• Rayer Bazar-Bosila Road\n\n🟢 SAFE ELEVATED ROADS:\n• Gulshan Avenue (best drainage in Dhaka)\n• Dhanmondi Road 27\n• Uttara Sector 3-7\n• MRT Line 6 (best option in any rain)\n\n💡 Rickshaw is best in floods — sits higher than cars.`
+      ? `${budget} টাকায় রুট পাওয়া গেছে:
+
+এখনকার সেরা পথ:
+বাস ৮ — মিরপুর ১০ থেকে ফার্মগেট
+(১৫ টাকা, ২৫ মিনিট)
+তারপর বাস ২৯ — মতিঝিল
+(১০ টাকা, ২০ মিনিট)
+
+মোট: ২৫ টাকা — আপনি ${budget - 25} টাকা বাঁচাচ্ছেন
+মোট সময়: ৪৫ মিনিট${rainWarning}
+
+সিএনজি এড়িয়ে চলুন — ওরা ১২০-১৫০ টাকা নেবে।`
+      : `Budget route found for ${budget} taka:
+
+Best option right now:
+Bus 8 from Mirpur 10 → Farmgate
+(15 taka, 25 min)
+Then bus 29 → Motijheel
+(10 taka, 20 min)
+
+Total: 25 taka — you save ${budget - 25} taka
+Total time: 45 min${rainWarning}
+
+Avoid CNG right now — they will charge 120-150 taka.`
   }
 
-  // 3. Check MRT query
-  if (isMRTQuery(message)) {
+  // 3. MRT info
+  if (isMRT(message)) {
     const mrt = DHAKA_KNOWLEDGE.metro_rail
     return bangla
-      ? `🚇 মেট্রো রেল (এমআরটি লাইন ৬):\n\nস্টেশনসমূহ:\n${mrt.stations.join(' → ')}\n\n💰 ভাড়া: ২০-১০০ টাকা\n⏱ সময়: প্রতি ৮-১০ মিনিটে ট্রেন\n🕐 চলাচল: সকাল ৭টা - রাত ৯:৩০\n\n✅ টিপস: ${mrt.expert_tip}`
-      : `🚇 METRO RAIL (MRT Line 6):\n\nStations: ${mrt.stations.join(' → ')}\n\n💰 Fare: ${mrt.fare}\n⏱ Frequency: ${mrt.frequency}\n🕐 Hours: ${mrt.hours}\n\n✅ Expert tip: ${mrt.expert_tip}`
+      ? `মেট্রো রেল (এমআরটি লাইন ৬):
+
+স্টেশন: ${mrt.stations.join(' → ')}
+
+ভাড়া: ২০-১০০ টাকা
+সময়: প্রতি ৮-১০ মিনিটে ট্রেন
+চলাচল: সকাল ৭টা - রাত ৯:৩০
+
+মিরপুর থেকে মতিঝিল — ২২ মিনিট, ৫০ টাকা।
+উত্তরা থেকে মতিঝিল — ২৮ মিনিট, ৮০ টাকা।
+
+রাশ আওয়ারে মেট্রো রেলই একমাত্র সঠিক পছন্দ।`
+      : `Metro Rail (MRT Line 6):
+
+Stations: ${mrt.stations.join(' → ')}
+
+Fare: 20-100 taka
+Frequency: Every 8-10 min
+Hours: 7:00am - 9:30pm
+
+Mirpur 10 → Motijheel: 22 min, 50 taka.
+Uttara → Motijheel: 28 min, 80 taka.
+
+During rush hour, MRT is the only smart choice.`
   }
 
-  // 4. Check known routes
-  for (const route of KNOWN_ROUTES) {
-    const hasFrom = zones.includes(route.from)
-    const hasTo = zones.includes(route.to)
-    if (hasFrom && hasTo) {
-      const response = (bangla ? route.bangla : route.response)
-      return warningText ? `${warningText}\n\n${response}` : response
+  // 4. Flood / rain info
+  if (isFlood(message)) {
+    return bangla
+      ? `বন্যা/জলাবদ্ধতার তথ্য:
+
+এড়িয়ে চলুন (বৃষ্টিতে তাড়াতাড়ি ডুবে):
+মিরপুর রোড (কল্যাণপুর-শ্যামলী)
+ডেমরা-যাত্রাবাড়ী রোড
+মালিবাগ-মৌচাক
+রায়েরবাজার-বসিলা
+
+নিরাপদ উঁচু রাস্তা:
+গুলশান অ্যাভিনিউ
+ধানমন্ডি ২৭ নম্বর
+উত্তরা সেক্টর ৩-৭
+মেট্রো রেল (বন্যায় সবচেয়ে ভালো)
+
+টিপস: বন্যায় রিকশা সবচেয়ে ভালো — গাড়ির চেয়ে উঁচুতে থাকে।`
+      : `Flood road intelligence:
+
+Avoid these (flood fast in rain):
+Mirpur Road (Kalyanpur to Shyamoli)
+Demra-Jatrabari Road
+Malibagh-Mouchak
+Rayer Bazar-Bosila Road
+
+Safe elevated roads:
+Gulshan Avenue (best drainage in city)
+Dhanmondi Road 27
+Uttara Sector 3-7
+MRT Line 6 (best in any rain)
+
+Tip: Rickshaw sits higher than cars — best in floods.`
+  }
+
+  // 5. Emergency
+  if (isEmergency(message)) {
+    return bangla
+      ? `এখনই করুন:
+নিকটতম মেট্রো স্টেশনে যান — সবচেয়ে দ্রুত
+অথবা পাঠাও বাইক কল করুন — যানজটে সবচেয়ে কার্যকর
+বৃষ্টি থাকলে রিকশায় উঠুন — বন্যার পানির উপরে থাকবেন
+
+জরুরি নম্বর: ৯৯৯ (পুলিশ) | ১৯৯ (ফায়ার সার্ভিস)`
+      : `Do this right now:
+Go to the nearest MRT station — fastest option in any traffic
+Or call Pathao bike — cuts through jams faster than anything
+If raining, take a rickshaw — sits above flood water
+
+Emergency: 999 (Police) | 199 (Fire Service)`
+  }
+
+  // 6. Known exact routes
+  const filteredRoutes = KNOWN_ROUTES.filter(r => r.en !== '') // skip placeholder
+  for (const route of filteredRoutes) {
+    if (zones.includes(route.from) && zones.includes(route.to)) {
+      const base = bangla ? route.bn : route.en
+      return rainWarning || rushWarning ? `${base}${rainWarning}${rushWarning}` : base
     }
   }
 
-  // 5. Budget query with destinations
-  if (isBudgetQuery(message) && zones.length > 0) {
-    const dest = zones[0]
-    return bangla
-      ? `💰 বাজেট রুট পরামর্শ:\n\n সবচেয়ে সস্তা বিকল্প:\n• বাস: ১০-৬০ টাকা (সবচেয়ে সস্তা)\n• মেট্রো রেল: ২০-১০০ টাকা (দ্রুত + সাশ্রয়ী)\n• পাঠাও বাইক: ৪০-১০০ টাকা\n\n${DHAKA_KNOWLEDGE.bus_routes.slice(0, 4).map(b => `• বাস ${b.number}: ${b.route}`).join('\n')}\n\nআপনার গন্তব্য আরো নির্দিষ্ট করে বলুন — আরো ভালো পরামর্শ দিতে পারব।`
-      : `💰 BUDGET ROUTE OPTIONS for ${dest}:\n\nCheapest options:\n• Bus: 10-60 taka (cheapest)\n• MRT: 20-100 taka (fast + affordable)\n• Pathao Bike: 40-100 taka\n\n${DHAKA_KNOWLEDGE.bus_routes.slice(0, 4).map(b => `• Bus ${b.number}: ${b.route}`).join('\n')}\n\nTell me your exact route and I'll give you a precise answer.`
-  }
-
-  // 6. Emergency query
-  if (isEmergencyQuery(message)) {
-    return bangla
-      ? `🚨 জরুরি সাহায্য:\n\n⚡ এখনই করুন:\n• নিকটতম মেট্রো স্টেশনে যান (সবচেয়ে দ্রুত)\n• পাঠাও বাইক কল করুন — যানজটে সবচেয়ে দ্রুত\n• বৃষ্টিতে থাকলে — রিকশায় উঠুন\n\n📞 জরুরি: ৯৯৯ (পুলিশ) | ১৯৯ (ফায়ার সার্ভিস)`
-      : `🚨 EMERGENCY HELP:\n\n⚡ DO THIS NOW:\n• Go to nearest MRT station (fastest option)\n• Call Pathao bike — beats all traffic\n• If raining — take a rickshaw, sits above flood water\n\n📞 Emergency: 999 (Police) | 199 (Fire Service)`
-  }
-
-  // 7. Generic useful response with MRT and local tips
+  // 7. Generic helpful response
   return bangla
-    ? `আপনার প্রশ্নটি বুঝতে পেরেছি। এখন লাইভ এআই ব্যস্ত — তবে আমার কাছে ঢাকার সম্পূর্ণ তথ্য আছে:\n\n🚇 মেট্রো রেল (এমআরটি লাইন ৬): উত্তরা থেকে মতিঝিল — ২৮ মিনিট, ৮০ টাকা\n🚌 বাস ৮: মিরপুর ১০ থেকে মতিঝিল — ১০-২০ টাকা\n🚌 বাস ৭: মিরপুর থেকে সায়েন্স ল্যাব/আজিমপুর — ১৫ টাকা\n\n${isRaining ? '⚠️ এখন বৃষ্টি হচ্ছে — উঁচু রাস্তা দিয়ে যান।\n' : ''}আপনার যাত্রার বিস্তারিত লিখুন — সঠিক রুট দেব।`
-    : `I understand your query. Live AI is temporarily busy — but I have complete Dhaka knowledge:\n\n🚇 MRT Line 6: Uttara → Motijheel in 28 min for 80 taka\n🚌 Bus 8: Mirpur 10 → Motijheel for 10-20 taka\n🚌 Bus 7: Mirpur → Science Lab for 15 taka\n🔑 Secret shortcut: Tejgaon back road bypasses all Mohakhali jams\n\n${isRaining ? '⚠️ It is raining now — use Gulshan Avenue or elevated roads.\n' : ''}Please tell me your exact route and I will help you right away.`
+    ? `আপনার প্রশ্ন পেয়েছি।
+
+এখন লাইভ এআই ব্যস্ত — তবে এখানে কিছু তথ্য দিচ্ছি:
+
+মেট্রো রেল: উত্তরা থেকে মতিঝিল — ২৮ মিনিট, ৮০ টাকা
+বাস ৮: মিরপুর ১০ থেকে মতিঝিল — ১৫ টাকা
+বাস ৭: মিরপুর থেকে সায়েন্স ল্যাব — ১৫ টাকা${rainWarning || rushWarning ? `\n${rainWarning}${rushWarning}` : ''}
+
+আপনার নির্দিষ্ট রুটটি বলুন — আরও ভালো পরামর্শ দিতে পারব।`
+    : `Got your question.
+
+Live AI is temporarily busy — here's what I know right now:
+
+MRT Line 6: Uttara → Motijheel in 28 min for 80 taka
+Bus 8: Mirpur 10 → Motijheel for 15 taka
+Bus 7: Mirpur → Science Lab for 15 taka${rainWarning || rushWarning ? `\n${rainWarning}${rushWarning}` : ''}
+
+Tell me your exact route and I'll give you a precise answer.`
 }

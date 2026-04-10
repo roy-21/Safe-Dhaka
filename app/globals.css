@@ -612,53 +612,83 @@ body {
   border-bottom-left-radius: var(--radius-lg);
 }
 
-/* === Expert Formatted Message === */
+/* === Formatted Message — Clean Human-Friendly Style === */
 .formatted-message {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   font-size: 14px;
-  line-height: 1.65;
+  line-height: 1.7;
 }
 
 .msg-spacer {
-  height: 6px;
+  height: 8px;
 }
 
-.msg-line {
-  color: var(--text-primary);
-}
-
-/* Safety score — bold green/yellow/red */
-.msg-safety-score {
+/* "Budget route found for 50 taka:" — first summary line */
+.msg-header {
   font-size: 15px;
   font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+  margin-bottom: 2px;
+}
+
+/* "Best option right now:" */
+.msg-section {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-teal);
+  margin-top: 2px;
+}
+
+/* "Safety score: 88/100 — Safe today ✅" */
+.msg-score {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 14px;
   color: var(--accent-green);
-  padding: 8px 12px;
   background: var(--accent-green-dim);
-  border-radius: var(--radius-sm);
   border-left: 3px solid var(--accent-green);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
   margin: 4px 0;
 }
 
-/* Section headers like 🗺 ROUTE RIGHT NOW, ⏱ TIME, 💰 COST */
-.msg-section-header {
-  font-weight: 600;
-  color: var(--accent-teal);
-  font-size: 13px;
-  margin-top: 6px;
-  letter-spacing: 0.2px;
-}
-
-/* Step 1:, Step 2: lines */
-.msg-step {
+/* "Bus 8 from Mirpur 10 → Farmgate" */
+.msg-transport {
   color: var(--text-primary);
-  padding-left: 14px;
-  border-left: 2px solid rgba(255,255,255,0.1);
-  margin: 2px 0;
+  font-weight: 500;
+  padding-left: 12px;
+  border-left: 3px solid var(--accent-teal);
+  margin: 3px 0 0;
+  border-radius: 0;
 }
 
-/* ⚠️ WARNING lines */
+/* "(15 taka, 25 min)" */
+.msg-cost {
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding-left: 15px;
+  margin-bottom: 6px;
+}
+
+/* "Total: 25 taka — you save 25 taka" */
+.msg-total {
+  font-weight: 700;
+  color: var(--accent-green);
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+/* "Total time: 45 min" */
+.msg-total-time {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+/* "⚠️ Rain alert — Mirpur Road risky" */
 .msg-warning {
   background: var(--accent-yellow-dim);
   border-left: 3px solid var(--accent-yellow);
@@ -667,10 +697,24 @@ body {
   border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 500;
-  margin: 4px 0;
+  margin: 6px 0 2px;
 }
 
-/* --- divider lines */
+/* "Avoid CNG right now — they will charge..." */
+.msg-advice {
+  color: var(--accent-orange);
+  font-size: 13px;
+  font-style: italic;
+  margin-top: 2px;
+}
+
+/* Normal plain text */
+.msg-text {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+/* Keep divider for any separators */
 .msg-divider {
   height: 1px;
   background: var(--border-subtle);
