@@ -9,46 +9,53 @@ interface VoiceInputProps {
   language?: 'bangla' | 'english'
 }
 
+// Type-safe browser Speech Recognition API definitions (not in TS lib by default)
+type SpeechRecognitionInstance = {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  maxAlternatives: number
+  start: () => void
+  stop: () => void
+  onstart: (() => void) | null
+  onend: (() => void) | null
+  onresult: ((e: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null
+  onerror: ((e: { error: string }) => void) | null
+}
+type SpeechRecognitionCtor = new () => SpeechRecognitionInstance
+
 export function VoiceInput({ onTranscript, disabled, language = 'english' }: VoiceInputProps) {
   const [state, setState] = useState<'idle' | 'listening' | 'processing'>('idle')
   const [supported, setSupported] = useState(true)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
 
   const startListening = useCallback(() => {
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      setSupported(false)
-      return
+    const win = window as Window & {
+      webkitSpeechRecognition?: SpeechRecognitionCtor
+      SpeechRecognition?: SpeechRecognitionCtor
     }
 
-    const SpeechRecognitionAPI =
-      (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition ||
-      window.SpeechRecognition
+    const API = win.webkitSpeechRecognition || win.SpeechRecognition
+    if (!API) { setSupported(false); return }
 
-    const recognition = new SpeechRecognitionAPI()
-    recognitionRef.current = recognition
+    const r = new API()
+    recognitionRef.current = r
 
-    // Support both Bangla and English — detect which to use
-    recognition.lang = language === 'bangla' ? 'bn-BD' : 'en-US'
-    recognition.continuous = false
-    recognition.interimResults = false
-    recognition.maxAlternatives = 1
+    r.lang = language === 'bangla' ? 'bn-BD' : 'en-US'
+    r.continuous = false
+    r.interimResults = false
+    r.maxAlternatives = 1
 
-    recognition.onstart = () => setState('listening')
-    recognition.onend = () => setState('idle')
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    r.onstart  = () => setState('listening')
+    r.onend    = () => setState('idle')
+    r.onerror  = (e) => { console.warn('Voice error:', e.error); setState('idle') }
+    r.onresult = (e) => {
       setState('processing')
-      const transcript = event.results[0][0].transcript
-      onTranscript(transcript)
+      onTranscript(e.results[0][0].transcript)
       setTimeout(() => setState('idle'), 500)
     }
 
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.warn('Voice recognition error:', event.error)
-      setState('idle')
-    }
-
-    recognition.start()
+    r.start()
   }, [language, onTranscript])
 
   const stopListening = useCallback(() => {
@@ -64,17 +71,13 @@ export function VoiceInput({ onTranscript, disabled, language = 'english' }: Voi
       onClick={state === 'listening' ? stopListening : startListening}
       disabled={disabled}
       className={`voice-btn ${state === 'listening' ? 'voice-btn-active' : ''}`}
-      title={state === 'listening' ? 'Stop listening' : 'Speak your destination (Bangla or English)'}
+      title={state === 'listening' ? 'Stop — কথা বলা বন্ধ করুন' : 'Speak in Bangla or English'}
       aria-label="Voice input"
       id="voice-input-btn"
     >
-      {state === 'listening' ? (
-        <MicOff size={18} className="voice-icon-active" />
-      ) : state === 'processing' ? (
-        <Loader2 size={18} className="voice-icon-spin" />
-      ) : (
-        <Mic size={18} />
-      )}
+      {state === 'listening'   ? <MicOff size={18} /> :
+       state === 'processing'  ? <Loader2 size={18} className="voice-icon-spin" /> :
+                                 <Mic size={18} />}
     </button>
   )
 }
