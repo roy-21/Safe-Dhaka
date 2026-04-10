@@ -6,16 +6,46 @@ import { getActiveAlerts } from '@/lib/alerts'
 import { getRecentReports } from '@/lib/community'
 import { buildSystemPrompt, EMERGENCY_PROMPT } from '@/lib/prompt-builder'
 
+// Bangla Unicode range: \u0980–\u09FF covers all Bengali script characters
+// Also detect "Banglish" — romanized Bangla words Dhaka users commonly type
+const BANGLISH_KEYWORDS = [
+  'ami', 'amar', 'amি', 'kothay', 'jabo', 'jete', 'chai',
+  'theke', 'pথে', 'kিভাবে', 'কোথায়', 'যাবো', 'যেতে',
+  'রাস্তা', 'পথ', 'বাস', 'রিকশা', 'সিএনজি', 'ট্রাফিক',
+  'apni', 'bhai', 'apa', 'dada', 'কত', 'টাকা', 'মিরপুর',
+  'ঢাকা', 'মতিঝিল', 'গুলশান', 'ধানমন্ডি', 'উত্তরা'
+]
+
 function detectLanguage(text: string): 'bangla' | 'english' {
-  const banglaPattern = /[\u0980-\u09FF]/
-  return banglaPattern.test(text) ? 'bangla' : 'english'
+  // Primary: detect actual Bangla Unicode characters (most reliable)
+  const banglaUnicode = /[\u0980-\u09FF]/
+  if (banglaUnicode.test(text)) return 'bangla'
+
+  // Secondary: detect common romanized Bangla words
+  const lowerText = text.toLowerCase()
+  const isBanglish = BANGLISH_KEYWORDS.some(k => lowerText.includes(k.toLowerCase()))
+  if (isBanglish) return 'bangla'
+
+  return 'english'
 }
 
 function detectBudget(text: string): number | undefined {
-  const match = text.match(/(\d+)\s*taka/i)
-  if (match) return parseInt(match[1])
-  const matchBangla = text.match(/(\d+)\s*টাকা/i)
-  if (matchBangla) return parseInt(matchBangla[1])
+  // English: "50 taka", "100tk", "200 bdt"
+  const matchEn = text.match(/(\d+)\s*(taka|tk|bdt)/i)
+  if (matchEn) return parseInt(matchEn[1])
+
+  // Bangla script: "৫০ টাকা" or "100 টাকা"
+  const matchBn = text.match(/(\d+)\s*টাকা/)
+  if (matchBn) return parseInt(matchBn[1])
+
+  // Bangla-Rupee digits: ৫০ টাকা
+  const matchBnDigits = text.match(/([০-৯]+)\s*টাকা/)
+  if (matchBnDigits) {
+    // Convert Bangla digits to Arabic digits
+    const arabic = matchBnDigits[1].replace(/[০-৯]/g, d => String('০১২৩৪৫৬৭৮৯'.indexOf(d)))
+    return parseInt(arabic)
+  }
+
   return undefined
 }
 

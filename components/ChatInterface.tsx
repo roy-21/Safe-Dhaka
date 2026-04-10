@@ -11,7 +11,9 @@ const INITIAL_MESSAGE: ChatMessage = {
 
 Tell me where you want to go — I will find the safest, cheapest route for you right now.
 
-Or ask me about your child's school route.`,
+Or ask me about your child's school route.
+
+আপনি বাংলায়ও লিখতে পারেন — আমি বাংলায় উত্তর দেব।`,
   timestamp: new Date()
 }
 
@@ -30,6 +32,16 @@ const QUICK_ACTIONS = [
     icon: AlertTriangle,
     text: "My child already left — is route safe now?",
     color: 'quick-emergency'
+  },
+  {
+    icon: School,
+    text: "মিরপুর থেকে মতিঝিল কীভাবে যাবো?",
+    color: 'quick-bangla'
+  },
+  {
+    icon: Wallet,
+    text: "আমার বাজেট ৫০ টাকা — কোন পথে যাবো?",
+    color: 'quick-bangla'
   }
 ]
 
@@ -206,10 +218,12 @@ export function ChatInterface() {
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
-            placeholder="Where do you want to go?"
+            placeholder="Where to go? / কোথায় যাবেন?"
             className="chat-input"
             disabled={isLoading}
             id="chat-input"
+            lang="bn"
+            dir="auto"
           />
           <button
             type="submit"
