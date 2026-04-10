@@ -8,17 +8,17 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "SafeRoute Dhaka — Safe, Smart Travel for Every Dhaka Family",
+  title: "Safe Dhaka — AI-Powered Travel Safety for Every Dhaka Family",
   description:
-    "SafeRoute Dhaka reduces travel risk and cost for 22 million Dhaka residents by providing real-time, locally-intelligent route recommendations. Built for mothers, budget travellers, and students.",
+    "Safe Dhaka helps 22 million Dhaka residents travel safely and affordably. Real-time route recommendations with flood alerts, hartal detection, school route safety scores, and budget routing. Built for Dhaka's reality.",
   keywords: [
     "Dhaka traffic",
-    "safe route",
-    "school route safety",
-    "Dhaka travel",
-    "Bangladesh traffic",
+    "safe route Dhaka",
+    "school route safety Bangladesh",
     "hartal alert",
     "flood road Dhaka",
+    "Dhaka travel guide",
+    "Bangladesh AI assistant",
   ],
 };
 

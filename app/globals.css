@@ -1,42 +1,43 @@
 /* ===================================
-   SafeRoute Dhaka — Premium Dark Theme
-   Matching reference design exactly
+   Safe Dhaka — Expert Dark Theme
+   AI-powered travel safety for Dhaka
    =================================== */
 
 @import "tailwindcss";
 
 /* === CSS Custom Properties === */
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-card: #1e2a3a;
-  --bg-input: #2a2a40;
-  --bg-bubble-ai: #2a3441;
+  --bg-primary: #0f1117;
+  --bg-secondary: #161b27;
+  --bg-card: #1c2333;
+  --bg-input: #1c2333;
+  --bg-bubble-ai: #1e2a3a;
   --bg-bubble-user: #0f3460;
 
-  --text-primary: #e8e8e8;
-  --text-secondary: #a0a0b8;
-  --text-muted: #6a6a80;
+  --text-primary: #e8eaf0;
+  --text-secondary: #8892a4;
+  --text-muted: #525c6e;
 
-  --accent-green: #00c853;
-  --accent-green-dim: rgba(0, 200, 83, 0.15);
-  --accent-red: #ff4444;
-  --accent-red-dim: rgba(255, 68, 68, 0.15);
-  --accent-yellow: #ffab00;
-  --accent-yellow-dim: rgba(255, 171, 0, 0.15);
+  --accent-green: #00e676;
+  --accent-green-dim: rgba(0, 230, 118, 0.1);
+  --accent-red: #ff5252;
+  --accent-red-dim: rgba(255, 82, 82, 0.12);
+  --accent-yellow: #ffd740;
+  --accent-yellow-dim: rgba(255, 215, 64, 0.12);
   --accent-orange: #ff6d00;
-  --accent-orange-dim: rgba(255, 109, 0, 0.15);
-  --accent-blue: #2979ff;
-  --accent-blue-dim: rgba(41, 121, 255, 0.1);
+  --accent-orange-dim: rgba(255, 109, 0, 0.12);
+  --accent-blue: #448aff;
+  --accent-blue-dim: rgba(68, 138, 255, 0.1);
+  --accent-teal: #1de9b6;
 
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-medium: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-medium: rgba(255, 255, 255, 0.08);
 
-  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.3);
-  --shadow-glow-green: 0 0 12px rgba(0, 200, 83, 0.2);
-  --shadow-glow-red: 0 0 12px rgba(255, 68, 68, 0.2);
+  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-glow-green: 0 0 16px rgba(0, 230, 118, 0.25);
+  --shadow-glow-red: 0 0 12px rgba(255, 82, 82, 0.2);
 
-  --radius-sm: 8px;
+  --radius-sm: 6px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-full: 9999px;
@@ -565,6 +566,159 @@ body {
 
 /* === Selection color === */
 ::selection {
-  background: rgba(0, 200, 83, 0.3);
+  background: rgba(0, 230, 118, 0.3);
   color: white;
+}
+
+/* === AI Avatar === */
+.message.assistant {
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ai-avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00e676, #00b248);
+  color: #000;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
+  margin-top: 2px;
+}
+
+/* AI bubble no longer has the left border-radius removed — avatar handles it */
+.message.assistant .message-bubble.assistant {
+  max-width: calc(85% - 42px);
+  border-bottom-left-radius: var(--radius-lg);
+}
+
+/* === Expert Formatted Message === */
+.formatted-message {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.msg-spacer {
+  height: 6px;
+}
+
+.msg-line {
+  color: var(--text-primary);
+}
+
+/* Safety score — bold green/yellow/red */
+.msg-safety-score {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-green);
+  padding: 8px 12px;
+  background: var(--accent-green-dim);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent-green);
+  margin: 4px 0;
+}
+
+/* Section headers like 🗺 ROUTE RIGHT NOW, ⏱ TIME, 💰 COST */
+.msg-section-header {
+  font-weight: 600;
+  color: var(--accent-teal);
+  font-size: 13px;
+  margin-top: 6px;
+  letter-spacing: 0.2px;
+}
+
+/* Step 1:, Step 2: lines */
+.msg-step {
+  color: var(--text-primary);
+  padding-left: 14px;
+  border-left: 2px solid rgba(255,255,255,0.1);
+  margin: 2px 0;
+}
+
+/* ⚠️ WARNING lines */
+.msg-warning {
+  background: var(--accent-yellow-dim);
+  border-left: 3px solid var(--accent-yellow);
+  color: var(--accent-yellow);
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  margin: 4px 0;
+}
+
+/* --- divider lines */
+.msg-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 6px 0;
+}
+
+/* === Meta Badges === */
+.meta-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.meta-badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+}
+
+.badge-rain {
+  background: var(--accent-red-dim);
+  color: var(--accent-red);
+}
+
+.badge-alert {
+  background: var(--accent-yellow-dim);
+  color: var(--accent-yellow);
+}
+
+.badge-report {
+  background: var(--accent-blue-dim);
+  color: var(--accent-blue);
+}
+
+/* === Header icon updated glow === */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 16px rgba(0, 230, 118, 0.25); }
+  50% { box-shadow: 0 0 28px rgba(0, 230, 118, 0.45); }
+}
+
+/* === Focus-within accent update === */
+.input-form:focus-within {
+  border-color: rgba(0, 230, 118, 0.45);
+  box-shadow: 0 0 0 2px rgba(0, 230, 118, 0.07);
+}
+
+/* === Send btn gradient update === */
+.send-btn {
+  background: linear-gradient(135deg, #00e676, #00b248);
+  color: #000;
+  font-weight: 700;
+}
+
+/* === App title gradient === */
+.app-title {
+  background: linear-gradient(135deg, #e8eaf0, var(--accent-teal));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }

@@ -7,7 +7,7 @@ import { ChatMessage } from '@/types'
 const INITIAL_MESSAGE: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
-  content: `Assalamu Alaikum! I am SafeRoute.
+  content: `Assalamu Alaikum! I am Safe Dhaka.
 
 Tell me where you want to go — I will find the safest, cheapest route for you right now.
 
@@ -33,6 +33,45 @@ const QUICK_ACTIONS = [
   }
 ]
 
+// Render message with smart formatting:
+// Lines starting with emoji headers get styled
+// Step lines get indented
+// Warning lines get highlighted
+function FormattedMessage({ content }: { content: string }) {
+  const lines = content.split('\n')
+
+  return (
+    <div className="formatted-message">
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} className="msg-spacer" />
+
+        // Safety score line
+        if (line.includes('SAFETY SCORE') || line.includes('🛡')) {
+          return <div key={i} className="msg-safety-score">{line}</div>
+        }
+        // Section headers (emoji + caps)
+        if (/^[🗺⏱💰🚨👥📍✅⚠️🔶🚫]/.test(line)) {
+          return <div key={i} className="msg-section-header">{line}</div>
+        }
+        // Step lines
+        if (/^\s*Step \d+:/.test(line)) {
+          return <div key={i} className="msg-step">{line}</div>
+        }
+        // Warning lines
+        if (line.startsWith('⚠️ WARNING') || line.startsWith('⚠️ WARNING')) {
+          return <div key={i} className="msg-warning">{line}</div>
+        }
+        // Separator lines
+        if (/^---+$/.test(line.trim())) {
+          return <div key={i} className="msg-divider" />
+        }
+        // Normal lines
+        return <div key={i} className="msg-line">{line}</div>
+      })}
+    </div>
+  )
+}
+
 export function ChatInterface() {
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE])
   const [input, setInput] = useState('')
@@ -40,12 +79,10 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Auto-scroll to latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Build conversation history for Gemini (role + parts format)
   function buildConversationHistory() {
     return messages
       .filter(m => m.id !== 'welcome')
@@ -115,24 +152,34 @@ export function ChatInterface() {
     sendMessage(text, isEmergency)
   }
 
-  // Format message content — preserve line breaks
-  function formatContent(content: string) {
-    return content.split('\n').map((line, i) => (
-      <span key={i}>
-        {line}
-        {i < content.split('\n').length - 1 && <br />}
-      </span>
-    ))
-  }
-
   return (
     <div className="chat-container">
       {/* Messages Area */}
       <div className="messages-area">
         {messages.map(msg => (
           <div key={msg.id} className={`message ${msg.role}`}>
+            {msg.role === 'assistant' && (
+              <div className="ai-avatar">SD</div>
+            )}
             <div className={`message-bubble ${msg.role}`}>
-              {formatContent(msg.content)}
+              {msg.role === 'assistant'
+                ? <FormattedMessage content={msg.content} />
+                : <span>{msg.content}</span>
+              }
+              {/* Show meta badge if available */}
+              {msg.meta && (
+                <div className="meta-badges">
+                  {msg.meta.weather.isRaining && (
+                    <span className="meta-badge badge-rain">🌧 Rain active</span>
+                  )}
+                  {msg.meta.alertCount > 0 && (
+                    <span className="meta-badge badge-alert">🚨 {msg.meta.alertCount} alert{msg.meta.alertCount > 1 ? 's' : ''}</span>
+                  )}
+                  {msg.meta.reportCount > 0 && (
+                    <span className="meta-badge badge-report">👥 {msg.meta.reportCount} report{msg.meta.reportCount > 1 ? 's' : ''}</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -140,9 +187,10 @@ export function ChatInterface() {
         {/* Loading indicator */}
         {isLoading && (
           <div className="message assistant">
+            <div className="ai-avatar">SD</div>
             <div className="message-bubble assistant loading-bubble">
-              <Loader2 className="spin" size={18} />
-              <span>Checking live conditions...</span>
+              <Loader2 className="spin" size={16} />
+              <span>Checking live Dhaka conditions...</span>
             </div>
           </div>
         )}
@@ -169,7 +217,7 @@ export function ChatInterface() {
             disabled={!input.trim() || isLoading}
             id="send-button"
           >
-            {isLoading ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
+            {isLoading ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
             <span>Send</span>
           </button>
         </form>

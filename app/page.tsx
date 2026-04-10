@@ -1,6 +1,6 @@
 import { StatusBar } from '@/components/StatusBar'
 import { ChatInterface } from '@/components/ChatInterface'
-import { MapPin } from 'lucide-react'
+import { Shield } from 'lucide-react'
 
 export default function Home() {
   return (
@@ -8,10 +8,10 @@ export default function Home() {
       {/* Header */}
       <header className="app-header">
         <div className="header-icon">
-          <MapPin size={28} />
+          <Shield size={26} />
         </div>
-        <h1 className="app-title">SafeRoute Dhaka</h1>
-        <p className="app-subtitle">Safe, smart, affordable travel for every Dhaka family</p>
+        <h1 className="app-title">Safe Dhaka</h1>
+        <p className="app-subtitle">AI-powered travel safety for every Dhaka family</p>
       </header>
 
       {/* Status Bar */}
