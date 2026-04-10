@@ -1,51 +1,37 @@
 // Safe Dhaka — Main AI Chat Endpoint
+// Uses official @google/generative-ai SDK with smart local fallback
 import { NextRequest, NextResponse } from 'next/server'
-import axios from 'axios'
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai'
 import { getDhakaWeather } from '@/lib/weather'
 import { getActiveAlerts } from '@/lib/alerts'
 import { getRecentReports } from '@/lib/community'
 import { buildSystemPrompt, EMERGENCY_PROMPT } from '@/lib/prompt-builder'
+import { generateLocalResponse } from '@/lib/local-fallback'
 
-// Bangla Unicode range: \u0980–\u09FF covers all Bengali script characters
-// Also detect "Banglish" — romanized Bangla words Dhaka users commonly type
+// Bangla Unicode range + Banglish romanized keywords
 const BANGLISH_KEYWORDS = [
-  'ami', 'amar', 'amি', 'kothay', 'jabo', 'jete', 'chai',
-  'theke', 'pথে', 'kিভাবে', 'কোথায়', 'যাবো', 'যেতে',
-  'রাস্তা', 'পথ', 'বাস', 'রিকশা', 'সিএনজি', 'ট্রাফিক',
-  'apni', 'bhai', 'apa', 'dada', 'কত', 'টাকা', 'মিরপুর',
-  'ঢাকা', 'মতিঝিল', 'গুলশান', 'ধানমন্ডি', 'উত্তরা'
+  'ami', 'amar', 'kothay', 'jabo', 'jete', 'chai',
+  'theke', 'apni', 'bhai', 'apa', 'dada', 'lagbe', 'koto', 'kemon',
+  'mirpur', 'motijheel', 'gulshan', 'uttara', 'dhanmondi', 'banani'
 ]
 
 function detectLanguage(text: string): 'bangla' | 'english' {
-  // Primary: detect actual Bangla Unicode characters (most reliable)
-  const banglaUnicode = /[\u0980-\u09FF]/
-  if (banglaUnicode.test(text)) return 'bangla'
-
-  // Secondary: detect common romanized Bangla words
-  const lowerText = text.toLowerCase()
-  const isBanglish = BANGLISH_KEYWORDS.some(k => lowerText.includes(k.toLowerCase()))
-  if (isBanglish) return 'bangla'
-
+  if (/[\u0980-\u09FF]/.test(text)) return 'bangla'
+  const lower = text.toLowerCase()
+  if (BANGLISH_KEYWORDS.some(k => lower.includes(k))) return 'bangla'
   return 'english'
 }
 
 function detectBudget(text: string): number | undefined {
-  // English: "50 taka", "100tk", "200 bdt"
   const matchEn = text.match(/(\d+)\s*(taka|tk|bdt)/i)
   if (matchEn) return parseInt(matchEn[1])
-
-  // Bangla script: "৫০ টাকা" or "100 টাকা"
   const matchBn = text.match(/(\d+)\s*টাকা/)
   if (matchBn) return parseInt(matchBn[1])
-
-  // Bangla-Rupee digits: ৫০ টাকা
   const matchBnDigits = text.match(/([০-৯]+)\s*টাকা/)
   if (matchBnDigits) {
-    // Convert Bangla digits to Arabic digits
-    const arabic = matchBnDigits[1].replace(/[০-৯]/g, d => String('০১২৩৪৫৬৭৮৯'.indexOf(d)))
+    const arabic = matchBnDigits[1].split('').map(d => '০১২৩৪৫৬৭৮৯'.indexOf(d)).join('')
     return parseInt(arabic)
   }
-
   return undefined
 }
 
@@ -56,18 +42,33 @@ function isRushHour(): boolean {
   return (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19)
 }
 
+// Initialize Gemini SDK
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey || apiKey === 'your_gemini_key_here') return null
+  return new GoogleGenerativeAI(apiKey)
+}
+
+// Safety settings — allow travel/geography content
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+]
+
 export async function POST(req: NextRequest) {
   try {
     const { message, conversationHistory = [], isEmergency = false } = await req.json()
 
-    // Input validation — never call Gemini with empty message
+    // Input validation
     if (!message || !message.trim()) {
       return NextResponse.json({
-        reply: 'Please tell me where you want to go. For example: "Mirpur 10 to Motijheel" or "Is my child\'s school route safe today?"'
+        reply: 'Please tell me where you want to go.\nFor example: "Mirpur 10 to Motijheel" or "মিরপুর থেকে মতিঝিল কীভাবে যাবো?"'
       })
     }
 
-    // Collect all live data in parallel — never sequentially
+    // Collect live data in parallel — always fast with individual timeouts
     const [weather, alerts, communityReports] = await Promise.all([
       getDhakaWeather(),
       getActiveAlerts(),
@@ -89,54 +90,40 @@ export async function POST(req: NextRequest) {
       userLanguage: detectLanguage(message) as 'english' | 'bangla'
     }
 
-    const systemPrompt = isEmergency
-      ? EMERGENCY_PROMPT
-      : buildSystemPrompt(ctx)
+    const systemPrompt = isEmergency ? EMERGENCY_PROMPT : buildSystemPrompt(ctx)
 
-    // Build conversation history for multi-turn memory
-    const messages = [
-      ...conversationHistory.slice(-6), // Keep last 3 exchanges for context
-      { role: 'user', parts: [{ text: message }] }
-    ]
+    // ── TRY GEMINI FIRST ──────────────────────────────────────
+    const genAI = getGeminiClient()
 
-    // Models to try in order — each has its own quota
-    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
-    const maxRetries = 3
+    if (genAI) {
+      const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
 
-    let lastError: unknown = null
-
-    for (const model of models) {
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
+      for (const modelName of models) {
         try {
-          // Wait before retry (exponential backoff)
-          if (attempt > 0) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)))
-          }
-
-          const geminiRes = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-            {
-              system_instruction: { parts: [{ text: systemPrompt }] },
-              contents: messages,
-              generationConfig: {
-                temperature: 0.4,
-                maxOutputTokens: 800,   // Expert structured responses need more tokens
-                topP: 0.8
-              }
+          const model = genAI.getGenerativeModel({
+            model: modelName,
+            systemInstruction: systemPrompt,
+            generationConfig: {
+              temperature: 0.4,
+              maxOutputTokens: 800,
+              topP: 0.8,
             },
-            { timeout: 15000 } // 15 second timeout
-          )
+            safetySettings: SAFETY_SETTINGS,
+          })
 
-          // Null-safe: Gemini may return no candidates if content is blocked
-          const candidates = geminiRes.data.candidates
-          if (!candidates || candidates.length === 0) {
-            console.warn(`Gemini ${model} returned no candidates (content blocked)`)
-            break
-          }
-          const reply = candidates[0]?.content?.parts?.[0]?.text
-          if (!reply) {
-            console.warn(`Gemini ${model} returned empty reply`)
-            break
+          // Build chat history from conversation
+          const history = conversationHistory.slice(-6).map((m: { role: string; parts: { text: string }[] }) => ({
+            role: m.role === 'model' ? 'model' : 'user',
+            parts: m.parts
+          }))
+
+          const chat = model.startChat({ history })
+          const result = await chat.sendMessage(message.trim())
+          const reply = result.response.text()
+
+          if (!reply || reply.trim() === '') {
+            console.warn(`${modelName} returned empty response`)
+            continue
           }
 
           return NextResponse.json({
@@ -145,40 +132,44 @@ export async function POST(req: NextRequest) {
               weather: { isRaining: weather.isRaining, floodRisk: weather.floodRisk },
               alertCount: alerts.length,
               reportCount: communityReports.length,
-              timestamp: now.toISOString()
+              timestamp: now.toISOString(),
+              source: 'gemini'
             }
           })
+
         } catch (err: unknown) {
-          lastError = err
-          const status = (err as { response?: { status?: number } })?.response?.status
-          // Only retry on rate limit (429) or server error (5xx)
-          if (status === 429 || (status && status >= 500)) {
-            console.log(`Gemini ${model} attempt ${attempt + 1} failed (${status}), retrying...`)
+          const status = (err as { status?: number })?.status
+          const message_err = (err as { message?: string })?.message || ''
+          console.warn(`Gemini ${modelName} failed:`, status, message_err.slice(0, 100))
+          // Continue to next model on quota/rate errors
+          if (status === 429 || status === 503 || message_err.includes('quota') || message_err.includes('429')) {
             continue
           }
-          // For other errors, break retry loop for this model
           break
         }
       }
     }
 
-    // All retries exhausted
-    const errStatus = (lastError as { response?: { status?: number } })?.response?.status
-    const isRateLimit = errStatus === 429
-    console.error('SafeRoute API - all Gemini attempts failed:', lastError)
-    return NextResponse.json(
-      { reply: isRateLimit
-          ? 'SafeRoute AI is cooling down after many requests. Please wait 1 minute and try again. Meanwhile: if it is raining, use elevated roads like Gulshan Avenue. If budget is tight, Bus 8 (Mirpur-Motijheel) costs only 10-20 taka.'
-          : 'I am having trouble checking live conditions right now. For safety, please delay travel if it is raining. Try again in 1 minute.'
-      },
-      { status: 200 }
-    )
+    // ── LOCAL FALLBACK — always gives useful Dhaka response ───
+    console.log('Using local fallback for:', message.slice(0, 50))
+    const localReply = generateLocalResponse(message, weather.isRaining, isRushHour())
+
+    return NextResponse.json({
+      reply: localReply,
+      meta: {
+        weather: { isRaining: weather.isRaining, floodRisk: weather.floodRisk },
+        alertCount: alerts.length,
+        reportCount: communityReports.length,
+        timestamp: now.toISOString(),
+        source: 'local' // Indicates fallback was used
+      }
+    })
 
   } catch (error) {
-    console.error('SafeRoute API error:', error)
+    console.error('Safe Dhaka API error:', error)
     return NextResponse.json(
-      { reply: 'I am having trouble checking live conditions right now. For safety, please delay travel if it is raining. Try again in 1 minute.' },
-      { status: 200 } // Never return 500 to user — always give a safe fallback
+      { reply: 'Please try again in a moment. If urgent: MRT Line 6 is Dhaka\'s fastest route. Bus 8 goes Mirpur→Motijheel for 10-20 taka.' },
+      { status: 200 }
     )
   }
 }
