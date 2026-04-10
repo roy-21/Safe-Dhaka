@@ -62,30 +62,65 @@ export async function POST(req: NextRequest) {
       { role: 'user', parts: [{ text: message }] }
     ]
 
-    const geminiRes = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: messages,
-        generationConfig: {
-          temperature: 0.4,       // Low temp = consistent, reliable answers
-          maxOutputTokens: 500,   // Keep responses concise
-          topP: 0.8
+    // Models to try in order (fallback if rate-limited)
+    const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
+    const maxRetries = 3
+
+    let lastError: unknown = null
+
+    for (const model of models) {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          // Wait before retry (exponential backoff)
+          if (attempt > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)))
+          }
+
+          const geminiRes = await axios.post(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+            {
+              system_instruction: { parts: [{ text: systemPrompt }] },
+              contents: messages,
+              generationConfig: {
+                temperature: 0.4,
+                maxOutputTokens: 500,
+                topP: 0.8
+              }
+            },
+            { timeout: 15000 } // 15 second timeout
+          )
+
+          const reply = geminiRes.data.candidates[0].content.parts[0].text
+
+          return NextResponse.json({
+            reply,
+            meta: {
+              weather: { isRaining: weather.isRaining, floodRisk: weather.floodRisk },
+              alertCount: alerts.length,
+              reportCount: communityReports.length,
+              timestamp: now.toISOString()
+            }
+          })
+        } catch (err: unknown) {
+          lastError = err
+          const status = (err as { response?: { status?: number } })?.response?.status
+          // Only retry on rate limit (429) or server error (5xx)
+          if (status === 429 || (status && status >= 500)) {
+            console.log(`Gemini ${model} attempt ${attempt + 1} failed (${status}), retrying...`)
+            continue
+          }
+          // For other errors, break retry loop for this model
+          break
         }
       }
+    }
+
+    // All retries exhausted
+    console.error('SafeRoute API - all Gemini attempts failed:', lastError)
+    return NextResponse.json(
+      { reply: 'I am having trouble checking live conditions right now. For safety, please delay travel if it is raining. Try again in 1 minute.' },
+      { status: 200 }
     )
-
-    const reply = geminiRes.data.candidates[0].content.parts[0].text
-
-    return NextResponse.json({
-      reply,
-      meta: {
-        weather: { isRaining: weather.isRaining, floodRisk: weather.floodRisk },
-        alertCount: alerts.length,
-        reportCount: communityReports.length,
-        timestamp: now.toISOString()
-      }
-    })
 
   } catch (error) {
     console.error('SafeRoute API error:', error)
