@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
       { role: 'user', parts: [{ text: message }] }
     ]
 
-    // Models to try in order (fallback if rate-limited)
-    const models = ['gemini-2.0-flash', 'gemini-2.0-flash-lite']
+    // Models to try in order — each has its own quota
+    const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite']
     const maxRetries = 3
 
     let lastError: unknown = null
@@ -116,9 +116,14 @@ export async function POST(req: NextRequest) {
     }
 
     // All retries exhausted
+    const errStatus = (lastError as { response?: { status?: number } })?.response?.status
+    const isRateLimit = errStatus === 429
     console.error('SafeRoute API - all Gemini attempts failed:', lastError)
     return NextResponse.json(
-      { reply: 'I am having trouble checking live conditions right now. For safety, please delay travel if it is raining. Try again in 1 minute.' },
+      { reply: isRateLimit
+          ? 'SafeRoute AI is cooling down after many requests. Please wait 1 minute and try again. Meanwhile: if it is raining, use elevated roads like Gulshan Avenue. If budget is tight, Bus 8 (Mirpur-Motijheel) costs only 10-20 taka.'
+          : 'I am having trouble checking live conditions right now. For safety, please delay travel if it is raining. Try again in 1 minute.'
+      },
       { status: 200 }
     )
 
